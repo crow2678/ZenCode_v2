@@ -1,0 +1,17 @@
+/**
+ * SSE endpoint for PRD generation progress.
+ * GET /api/stream/prd?projectId=xxx
+ */
+
+import { NextRequest } from 'next/server'
+import { createSSEResponse } from '../helpers'
+
+export const dynamic = 'force-dynamic'
+
+export function GET(request: NextRequest) {
+  const projectId = request.nextUrl.searchParams.get('projectId')
+  if (!projectId) {
+    return new Response('Missing projectId', { status: 400 })
+  }
+  return createSSEResponse(request, projectId, 'prd')
+}
