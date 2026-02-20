@@ -41,3 +41,14 @@ Thumbs.db
 
 # Assembly output
 .assembled/
+
+# User uploads
+.uploads/
+
+# Claude Code
+.claude/
+
+# Sensitive documents
+*.pdf
+*.pptx
+*.docx

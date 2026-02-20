@@ -8,13 +8,12 @@ export async function GET() {
 
   // Check database
   let dbConnected = false
-  let dbError: string | null = null
   try {
     const { connectDB } = await import('@/lib/db/connection')
     await connectDB()
     dbConnected = true
-  } catch (err) {
-    dbError = (err as Error).message
+  } catch {
+    // Connection failed — status will show connected: false
   }
 
   return NextResponse.json({
@@ -29,7 +28,6 @@ export async function GET() {
     },
     database: {
       connected: dbConnected,
-      error: dbError,
     },
   })
 }

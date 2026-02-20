@@ -2,6 +2,13 @@
   "name": "zencode-v2",
   "version": "0.1.0",
   "private": true,
+  "description": "AI-powered, stack-agnostic code generation platform",
+  "license": "MIT",
+  "author": "crow2678",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crow2678/ZenCode_v2.git"
+  },
   "scripts": {
     "dev": "next dev -p 3001 --turbo",
     "build": "next build",
