@@ -45,25 +45,176 @@ The app runs at [http://localhost:3001](http://localhost:3001).
 
 ### Adding a New Stack
 
-This is one of the most impactful ways to contribute. ZenCode uses a plugin system where each stack implements the `IStackHandler` interface.
+This is one of the most impactful ways to contribute. ZenCode uses a plugin system where each stack extends the `BaseStackHandler` class and implements the `IStackHandler` interface.
 
-**Steps to add a new stack:**
+> Before starting, please open an issue using the [New Stack](https://github.com/crow2678/ZenCode_v2/issues/new?template=new_stack.md) template to discuss your proposed stack.
 
-1. Create a new directory under `src/stacks/` (e.g., `src/stacks/django-postgres/`)
-2. Implement the `IStackHandler` interface from `src/stacks/types.ts`
-3. Your handler must provide:
-   - **Identity**: `id`, `name`, `description`, `icon`, `language`, `framework`, `runtime`
-   - **File structure**: paths for models, services, routes, pages, components, utils
-   - **Parsing**: import/export parsing for the stack's language
-   - **Prompts**: AI prompt sections for PRD, blueprint, work orders, and code generation
-   - **Templates**: scaffold templates and required files
-4. Register your handler in `src/stacks/registry.ts`
-5. Use the [New Stack](https://github.com/crow2678/ZenCode_v2/issues/new?template=new_stack.md) issue template to propose your stack first
+#### Stack File Structure
 
-**Reference implementations:**
-- `src/stacks/nextjs-mongodb/` — TypeScript + Node.js stack
-- `src/stacks/fastapi-postgres/` — Python stack
-- `src/stacks/express-postgres/` — TypeScript + Express stack
+Each stack lives in its own directory under `src/stacks/` with three files:
+
+```
+src/stacks/your-stack/
+├── index.ts       # Handler class (extends BaseStackHandler)
+├── prompts.ts     # AI prompt sections for all pipeline stages
+└── templates.ts   # Scaffold templates and required files
+```
+
+#### Step 1: Create the Handler (`index.ts`)
+
+Your handler class extends `BaseStackHandler` and must provide:
+
+**Identity & Language:**
+
+```typescript
+import { BaseStackHandler } from '../base'
+import { stackRegistry } from '../registry'
+import type { PromptSection, PromptContext, /* ... */ } from '../types'
+
+class DjangoPostgresHandler extends BaseStackHandler {
+  // Identity
+  readonly id = 'django-postgres'
+  readonly name = 'Django + PostgreSQL'
+  readonly description = 'Django with PostgreSQL, DRF, and Celery'
+  readonly icon = '🐍'
+  readonly version = '1.0.0'
+
+  // Language
+  readonly language = 'python' as const
+  readonly framework = 'django'
+  readonly runtime = 'python' as const
+
+  // File extensions
+  readonly sourceExtensions = ['.py']
+  readonly configFiles = ['pyproject.toml', 'manage.py']
+  readonly indexFileNames = ['__init__.py']
+
+  // Where generated files go (used by AI for correct paths)
+  readonly fileStructure = {
+    models: 'app/models',
+    services: 'app/services',
+    routes: 'app/views',
+    pages: 'templates',
+    components: 'app/templatetags',
+    utils: 'app/utils',
+  }
+
+  // Dependency management
+  readonly dependencyFile = 'pyproject.toml'
+  readonly lockFile = 'requirements.lock'
+```
+
+**Required Methods:**
+
+| Method | Purpose |
+|--------|---------|
+| `parseImports(content, filePath)` | Parse `import` / `from ... import` statements into `ImportInfo[]` |
+| `parseExports(content, filePath)` | Parse module-level definitions into `ExportInfo[]` |
+| `parsePackageDependencies(content)` | Extract external package names from imports |
+| `getPathAliases(projectDir)` | Return path alias map (e.g., `{}` for Python) |
+| `resolveImportPath(source, fromFile, projectDir, availableFiles)` | Resolve an import to a file path, or `null` for external packages |
+| `parseDependencyFile(content)` | Parse `pyproject.toml` / `requirements.txt` into `DependencyInfo[]` |
+| `serializeDependencyFile(deps, existing?)` | Serialize dependencies back to file format |
+| `getInstallCommand(deps)` | Return install command (e.g., `pip install pkg1 pkg2`) |
+| `getTypeCheckCommand()` | Return type-check command or `null` |
+| `getLintCommand()` | Return lint command or `null` |
+| `validateFile(content, filePath)` | Return `ValidationError[]` for stack-specific issues |
+| `getPromptSection(section)` | Delegate to `prompts.ts` |
+| `buildSystemPrompt(context)` | Delegate to `prompts.ts` |
+| `getScaffoldTemplates()` | Delegate to `templates.ts` |
+| `getRequiredFiles()` | Delegate to `templates.ts` |
+
+See `src/stacks/types.ts` for the full type definitions of `ImportInfo`, `ExportInfo`, `ValidationError`, `DependencyInfo`, and `PromptSection`.
+
+**Auto-register at the bottom of the file:**
+
+```typescript
+const handler = new DjangoPostgresHandler()
+stackRegistry.register(handler)
+export { handler as djangoPostgresHandler }
+```
+
+#### Step 2: Create AI Prompts (`prompts.ts`)
+
+This file contains all the prompt text the AI uses when generating code for your stack. You must provide a `getPromptSection(section: PromptSection): string` function that returns content for each section:
+
+| Section | Stage | What to include |
+|---------|-------|-----------------|
+| `project-structure` | All | Directory tree showing where files go |
+| `code-patterns` | All | Framework setup, config, common patterns |
+| `component-patterns` | All | UI component patterns (templates, views) |
+| `model-patterns` | All | ORM model definitions, migrations |
+| `service-patterns` | All | Business logic layer patterns |
+| `route-patterns` | All | URL routing, views, serializers |
+| `auth-patterns` | All | Authentication/authorization patterns |
+| `validation-checklist` | All | Pre-submit checklist for the AI |
+| `prd` | PRD | Stack-specific PRD generation instructions |
+| `blueprint` | Blueprint | Blueprint generation instructions |
+| `work-orders` | Work Orders | Work order format (metadata only, NO code) |
+| `agent-execution` | Assembly | Full code templates for each file type |
+| `scaffold` | Assembly | Required config/boilerplate files |
+| `missing_files` | Assembly | Critical files to generate if missing |
+| `validation_fixes` | Assembly | Patterns for fixing common issues |
+| `wiring` | Assembly | Barrel files, router wiring, naming |
+
+Also provide `buildSystemPrompt(context: PromptContext): string` that assembles the relevant sections into a complete system prompt.
+
+> **Important**: Prompt sections are stage-specific. The `agent-execution` section (with full code templates) is only used during code generation, NOT during work order generation. Mixing stages wastes tokens and causes errors.
+
+#### Step 3: Create Templates (`templates.ts`)
+
+Provide two exports:
+
+```typescript
+// Returns a Map<filePath, fileContent> of all scaffold/boilerplate files
+// Use {{projectName}} as a placeholder
+export function getScaffoldTemplates(): Map<string, string> {
+  const templates = new Map<string, string>()
+  templates.set('pyproject.toml', `[project]\nname = "{{projectName}}"...`)
+  templates.set('manage.py', `#!/usr/bin/env python...`)
+  // ... all boilerplate files
+  return templates
+}
+
+// Returns file paths that MUST exist in a valid generated project
+export function getRequiredFiles(): string[] {
+  return ['pyproject.toml', 'manage.py', 'app/__init__.py', ...]
+}
+```
+
+#### Step 4: Register in the Entry Point
+
+Add a side-effect import to `src/stacks/index.ts`:
+
+```typescript
+// Built-in stacks
+import './nextjs-mongodb'
+import './fastapi-postgres'
+import './express-postgres'
+import './django-postgres'    // <-- add your stack
+```
+
+#### Step 5: Update Stack Detection (Optional)
+
+If you want ZenCode to auto-detect your stack from PRDs, update the keyword matching in `src/stacks/factory.ts` inside the `resolveFromPRD()` method.
+
+#### Reference Implementations
+
+Study these existing stacks to understand the patterns:
+
+| Stack | Language | Directory |
+|-------|----------|-----------|
+| Next.js + MongoDB | TypeScript | `src/stacks/nextjs-mongodb/` |
+| FastAPI + PostgreSQL | Python | `src/stacks/fastapi-postgres/` |
+| Express + PostgreSQL | TypeScript | `src/stacks/express-postgres/` |
+
+#### Testing Your Stack
+
+1. Run the dev server: `npm run dev`
+2. Create a new project and select your stack
+3. Generate a PRD, blueprint, work orders, and assembly
+4. Verify the generated code is syntactically correct and follows your framework's conventions
+5. Download the assembled project and confirm it runs
 
 ### Pull Request Process
 
